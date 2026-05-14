@@ -1,11 +1,11 @@
 name: Update dashboard data
 
 # Wanneer draait deze workflow?
-#   - Elke dag om 05:00 UTC (= 06:00 NL winter / 07:00 NL zomer)
+#   - Elke maandag om 05:00 UTC (= 06:00 NL winter / 07:00 NL zomer)
 #   - Handmatig vanuit het Actions-tabblad in GitHub
 on:
   schedule:
-    - cron: '0 5 * * *'
+    - cron: '0 5 * * 1'
   workflow_dispatch:
     inputs:
       reason:
@@ -52,6 +52,6 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data.json
-          git commit -m "chore: dagelijkse data-refresh ($(date -u +%Y-%m-%d))"
+          git commit -m "chore: wekelijkse data-refresh ($(date -u +%Y-%m-%d))"
           git push
           echo "Nieuwe data gecommit en gepusht — Vercel rebuildt automatisch."
