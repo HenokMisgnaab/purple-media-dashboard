@@ -1,0 +1,57 @@
+name: Update dashboard data
+
+# Wanneer draait deze workflow?
+#   - Elke dag om 05:00 UTC (= 06:00 NL winter / 07:00 NL zomer)
+#   - Handmatig vanuit het Actions-tabblad in GitHub
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reden voor handmatige run (optioneel)'
+        required: false
+
+# Voorkom dat 2 runs tegelijk pushen naar main
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+# GITHUB_TOKEN mag committen
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install --quiet requests
+
+      - name: Genereer data.json uit Simplicate API
+        env:
+          SIMPLICATE_SUBDOMAIN: ${{ secrets.SIMPLICATE_SUBDOMAIN }}
+          SIMPLICATE_API_KEY:    ${{ secrets.SIMPLICATE_API_KEY }}
+          SIMPLICATE_API_SECRET: ${{ secrets.SIMPLICATE_API_SECRET }}
+        run: python3 update_dashboard.py --source=api
+
+      - name: Commit + push als data.json gewijzigd is
+        run: |
+          if git diff --quiet data.json; then
+            echo "Geen wijziging in data.json — niets te committen."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git commit -m "chore: dagelijkse data-refresh ($(date -u +%Y-%m-%d))"
+          git push
+          echo "Nieuwe data gecommit en gepusht — Vercel rebuildt automatisch."
