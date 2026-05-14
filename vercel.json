@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/purple_media_dashboard.html" }
+  ]
+}
