@@ -1,157 +1,189 @@
-# Purple Media Dashboard – Simplicate API Koppeling (Fase 1)
+# Purple Media Dashboard
 
-Dit script haalt facturatie-data op uit Simplicate en update automatisch
-de cijfers in `purple_media_dashboard.html`.
+Interactief bedrijfsdashboard voor Purple Media-management. Toont
+omzet, klanten en bezetting met flexibele periode-vergelijking,
+filters, klant-drill-down en automatische insights.
 
-## Wat het script doet (Fase 1)
+## Architectuur
 
-Vervangt automatisch:
-
-- **T** – totale omzet per maand
-- **MA** – Marketing abo per maand
-- **SL** – SLA per maand
-- **WB** – Website per maand
-- **OV** – Overig per maand
-- **clients** – top-15 klanten + percentages
-- Donut totalen (cDonut)
-- Kwartaal totalen (cKwartaal)
-- Klant-loyalty buckets (cLoyalty)
-
-## Wat het script (nog) NIET doet
-
-Voor Fase 2:
-
-- `BZ` (bezetting %), `IK` (inkoop-uren), `IP` (inkoop-%) – komen uit `/hours/hours`
-- Groeiers/dalers (`gr` en `da` arrays) – vereist periode-vergelijking
-- Insight-teksten (de gekleurde balkjes met inzichten) – die zijn nog handmatig
-
-## Installatie
-
-### 1. Python installeren
-
-Mac: Python 3.10+ is meestal al aanwezig. Check met:
-```bash
-python3 --version
 ```
-Anders: <https://www.python.org/downloads/>
-
-### 2. Dependencies installeren
-
-In Terminal, in de map waar dit script staat:
-```bash
-pip3 install requests
+                     update_dashboard.py
+   ┌───────────────────────┴───────────────────────┐
+   │                                               │
+   ▼                                               ▼
+Excel-export                                Simplicate v2 API
+(omzetrapportage)                           (/invoices/invoice)
+   │                                               │
+   └───────────────────────┬───────────────────────┘
+                           ▼
+                       data.json
+                           │
+                           ▼
+            purple_media_dashboard.html
+            (fetch → Chart.js → DOM)
 ```
 
-### 3. API key aanmaken in Simplicate
+- **`update_dashboard.py`** — leest een Excel-omzetrapportage óf trekt
+  facturen via de Simplicate v2 API, categoriseert per service en schrijft
+  `data.json`.
+- **`data.json`** — bevat per maand: totale omzet, omzet per categorie
+  (MA / SLA / WB / OV / IK), netto omzet, en per klant: maandelijkse omzet
+  + service-mix. Plus meta (FTE, capaciteit, uurtarief).
+- **`purple_media_dashboard.html`** — single-file frontend. Doet `fetch('data.json')`,
+  rendert alle KPI's, charts (Chart.js v4), tabellen en insights uit die
+  data. Bevat de hele interactie-laag (periode-selector, filters,
+  vergelijkings-modus, drill-down).
 
-1. Log in op Simplicate.
-2. Ga naar **Settings → General → API**.
-3. Klik **Nieuwe API key**.
-4. Geef de key een naam (bv. "Dashboard sync") en kies een gebruiker met
-   voldoende rechten (in elk geval lezen van facturen en organisaties).
-5. Kopieer **API Key** en **API Secret** – die zie je maar één keer.
+## Features
 
-### 4. Credentials instellen
+| Tab | Inhoud |
+|---|---|
+| **Omzet** | Totale & netto omzet, maandelijkse stacked-bar per categorie, % per categorie over tijd, MoM-groei, donut, kwartaal-overzicht, abo-trend, forecast met R²-fit |
+| **Klanten** | Top-15 balken (sorteerbaar per segment), omzetbanden-tabel, klantloyaliteit-buckets, HHI-concentratie-index met uitleg, drill-down panel per klant |
+| **Capaciteit** | Bezetting per maand, netto vs. plafond, inkoop% per maand, productiviteitsanalyse |
+| **Signalen** | Abo run rate, recurring%, kanaalpartners, groeiers/dalers, strategische samenvatting |
 
-**Optie A – Bovenin `update_dashboard.py` invullen:**
+### Interactieve elementen
 
-```python
-SUBDOMAIN  = "JOUW_SUBDOMEIN"   # bv. "purplemedia" als je URL purplemedia.simplicate.nl is
-API_KEY    = "JOUW_API_KEY"
-API_SECRET = "JOUW_API_SECRET"
-```
+- **Periode-selector**: presets (laatste N maanden, YTD, kwartalen, hele
+  periode) of custom range (from–to dropdowns)
+- **Vergelijkings-modus** (Periode A vs B): voorgaande gelijke periode,
+  zelfde periode vorig jaar, of custom; alle KPI's krijgen delta-badges
+- **Categorie-filters** (5 pillen): MA / SLA / WB / OV / IK individueel
+  in/uit te schakelen
+- **Klant-segment-filter**: top-5/15/30, long-tail, of per omzetband
+- **Klant-drill-down**: klik op een klant in top-15 → side-panel met
+  kerncijfers, service-mix donut, maandelijkse omzet, vergelijking met
+  Periode B (indien actief)
 
-**Optie B – Environment variables (veiliger, vooral als je dit deelt):**
+## Setup
 
-Mac/Linux Terminal:
-```bash
-export SIMPLICATE_SUBDOMAIN="purplemedia"
-export SIMPLICATE_API_KEY="..."
-export SIMPLICATE_API_SECRET="..."
-```
-
-Voor permanent op je Mac: voeg deze regels toe aan `~/.zshrc`.
-
-## Gebruik
-
-Zet `update_dashboard.py` in dezelfde map als `purple_media_dashboard.html`.
-
-### Stap 1: Dry-run (zonder HTML te wijzigen)
+### Eénmalig
 
 ```bash
-python3 update_dashboard.py --dry-run
+# Python dependencies (alleen voor update_dashboard.py)
+pip3 install requests openpyxl
 ```
 
-Dit toont een tabel met alle maandbedragen per categorie en de top-15 klanten,
-zónder iets in de HTML te veranderen. **Vergelijk deze cijfers met je huidige
-dashboard** voordat je verder gaat. Let vooral op:
+### data.json genereren
 
-- Klopt het maandtotaal (laatste regel "TOTAAL") ongeveer met wat je verwacht?
-- Staan de juiste klanten in de top-15?
-- Onderaan staat een lijstje "Services in categorie 'Overig'" – check of
-  daar geen service in staat die eigenlijk in MA/SLA/WB hoort.
-
-### Stap 2: Categorisering controleren
-
-Als je in de output ziet dat bijvoorbeeld een nieuwe service `"Nieuwsbrief
-(abonnement)"` onder Overig valt terwijl je hem onder Marketing abo wilt:
-open `update_dashboard.py` en voeg de naam toe aan `CAT_MARKETING_ABO`:
-
-```python
-CAT_MARKETING_ABO = {
-    "All-in-One Marketing (abonnement)",
-    "SEO (abonnement)",
-    ...
-    "Nieuwsbrief (abonnement)",   # ← nieuw
-}
-```
-
-### Stap 3: HTML daadwerkelijk updaten
-
+**Vanuit Excel (default, snelste pad):**
 ```bash
 python3 update_dashboard.py
 ```
 
-Er wordt eerst een backup gemaakt: `purple_media_dashboard.html.bak`.
-Open daarna `purple_media_dashboard.html` in je browser om te zien
-of alles klopt. Als het mis is, herstel met:
+Verwacht `Export+van+omzetrapportage-*.xlsx` in dezelfde map (of geef pad
+mee met `--excel`).
+
+**Vanuit Simplicate API** (live data, vereist credentials):
+```bash
+export SIMPLICATE_SUBDOMAIN="purplemedia"
+export SIMPLICATE_API_KEY="..."
+export SIMPLICATE_API_SECRET="..."
+python3 update_dashboard.py --source=api
+```
+
+API-keys worden uitsluitend via environment variables gelezen — **nooit
+in code committen**. Een nieuwe key maak je in Simplicate via
+*Settings → General → API*.
+
+**Dry-run** (zien wat er zou worden geschreven, zonder iets te wijzigen):
+```bash
+python3 update_dashboard.py --dry-run
+```
+
+### Dashboard openen
+
+`fetch('data.json')` werkt niet via `file://` (CORS). Start een lokale
+webserver in de projectmap:
 
 ```bash
-cp purple_media_dashboard.html.bak purple_media_dashboard.html
+python3 -m http.server 8080
 ```
 
-## Periode aanpassen
+Open daarna <http://localhost:8080/purple_media_dashboard.html>.
 
-In `update_dashboard.py` bovenaan:
+## Tests
 
-```python
-PERIOD_START = date(2025, 1, 1)
-PERIOD_END   = date(2026, 3, 31)
+Headless regressie-tests (jsdom) draaien in onder een seconde en dekken
+zowel rendering als interactie:
+
+```bash
+cd tests
+npm install
+npm test
 ```
 
-Pas aan voor een andere periode. Let op: de HTML toont 15 maanden in
-labels (`Jan 25` t/m `Mrt 26`). Als je periode langer/korter wordt,
-moet je ook de `M` array in de HTML aanpassen, anders krijg je
-mismatchende labels.
+Zie [`tests/README.md`](tests/README.md) voor wat precies wordt getest.
 
-## Wat als de cijfers niet kloppen?
+Draai deze na elke aanpassing aan de HTML/JS — ze vangen 36 manieren waarop
+de UI stuk kan gaan (missende DOM-elementen, vertaal-fouten in JS, broken
+filters, lege KPI's, runtime-errors).
 
-Meest waarschijnlijke oorzaken, in volgorde:
+## Categorisering
 
-1. **Service-namen wijken af** – check de "Overig"-lijst in dry-run output
-   en pas de categorie-sets aan.
-2. **Datum in Simplicate vs. in CSV** – Simplicate API geeft `invoice_date`;
-   de CSV-rapportage gebruikt mogelijk een andere datumdefinitie
-   (factuurdatum vs. levermaand). Verschil tussen maanden is dan normaal,
-   jaartotaal moet wél kloppen.
-3. **BTW** – het script werkt met regelbedragen ex BTW. Als jouw CSV
-   inclusief BTW was, krijg je 21% lagere cijfers.
-4. **Concept-facturen** – `/invoices/invoice` levert standaard alle statussen.
-   Wil je alleen definitieve? Voeg een filter toe: `q[status]=invoiced` of
-   filter in `aggregate()` op `inv.get("status")`.
+De 5 categorieën worden bovenin `update_dashboard.py` bepaald op basis
+van service-naam in Simplicate. Onbekende services vallen automatisch in
+**Overig** en worden in dry-run output gelogd — daar kun je nieuwe
+services aan de juiste categorie toevoegen.
 
-## Automatisch laten draaien
+| Categorie | Inhoud | Kleur |
+|---|---|---|
+| **MA** Marketing abo | Alle `(abonnement)`-services + Online/E-mail Marketing + SMA | `#7c6ef7` paars |
+| **SLA** Service | Service + Support (recurring servicewerk) | `#2dd4a7` teal |
+| **WB** Website | Development (project-werk) | `#3b82f6` blauw |
+| **OV** Overig | Algemeen, Creatie, Projectmanagement, Strategie, onbekend | `#4b5563` grijs |
+| **IK** Inkoop | Inkoop + `Inkoop (abonnement)` (pass-through kosten) | `#f5a623` amber |
 
-Als handmatig draaien gaat werken en je wilt het later automatiseren
-(elke nacht/week): macOS heeft `launchd`, Windows heeft Task Scheduler.
-Niet nodig voor Fase 1.
+## Capaciteits-aannames
+
+Bovenin `update_dashboard.py`:
+- `FTE = 9.5`
+- `UUR_PER_FTE_PER_MAAND = 120`
+- `UUR_TARIEF_EUR = 110`
+- `MAX_CAPACITY` = 9,5 × 120 × €110 = €125.400 / maand
+
+Worden naar `data.json` geschreven zodat de frontend ze kent. Pas aan
+als het team groeit of het tarief wijzigt.
+
+## Datagevoeligheid
+
+`data.json` en de Excel-export bevatten **klantnamen + maandelijkse
+omzet per klant**. Bij sharing of git-hosting:
+
+- **Repository moet PRIVATE zijn** als de echte data wordt meegeleverd.
+- **GitHub Pages op private repos** vereist GitHub Pro (€4/mnd) of
+  Organization Team-tier.
+- Alternatief: een geanonimiseerde variant van `data.json` checken in en
+  de echte versie lokaal houden.
+
+## Bestandsstructuur
+
+```
+.
+├── purple_media_dashboard.html   # Single-file frontend
+├── data.json                     # Genereerd door update_dashboard.py
+├── update_dashboard.py           # Excel / API → data.json
+├── Export+van+omzetrapportage-*.xlsx   # Brondata (excel-mode)
+├── tests/
+│   ├── smoke.js                  # 16 baseline checks
+│   ├── interactive.js            # 20 interactie-checks
+│   ├── package.json
+│   └── README.md
+├── .gitignore
+└── README.md
+```
+
+## Roadmap
+
+- [x] data-laag: Excel + API → data.json met 5 categorieën
+- [x] dynamische rendering: alle charts en KPI's uit data.json
+- [x] periode-selector + presets + custom range
+- [x] vergelijkings-modus (Periode A vs B) met delta-badges
+- [x] categorie- en segment-filters
+- [x] klant-drill-down side panel
+- [x] auto-insights (HHI, omzetbanden, capaciteit, strategisch, groeiers/dalers)
+- [x] forecast: lineaire regressie met R²-fit en adaptive horizon
+- [x] headless regressie-tests (36 checks)
+- [ ] `/hours/hours` integratie voor uren-gebaseerde bezetting & inkoop%
+- [ ] GitHub-deployment (private repo + Pages)

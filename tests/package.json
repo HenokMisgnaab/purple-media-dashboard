@@ -1,0 +1,14 @@
+{
+  "name": "purple-media-dashboard-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Headless smoke- en interactie-tests voor purple_media_dashboard.html",
+  "scripts": {
+    "test": "node smoke.js && node interactive.js",
+    "smoke": "node smoke.js",
+    "interactive": "node interactive.js"
+  },
+  "dependencies": {
+    "jsdom": "^29.1.1"
+  }
+}

@@ -16,6 +16,10 @@ venv/
 .env.*
 !.env.example
 
+# Node test-dependencies (tests/ heeft eigen package.json)
+node_modules/
+package-lock.json
+
 # IDE
 .vscode/
 .idea/
