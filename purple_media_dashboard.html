@@ -31,7 +31,7 @@
   .period{font-family:var(--mono);font-size:12px;color:var(--text3);text-align:right}
   .period strong{display:block;color:var(--text2);font-size:13px}
 
-  .nav{display:flex;gap:4px;margin-bottom:20px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:4px;width:fit-content}
+  .nav{position:relative;z-index:91;display:flex;gap:4px;margin-bottom:20px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:4px;width:fit-content}
   .nav button{background:none;border:none;color:var(--text3);font-family:var(--body);font-size:13px;font-weight:500;padding:8px 18px;border-radius:8px;cursor:pointer;transition:all .2s}
   .nav button:hover{color:var(--text2);background:var(--bg3)}
   .nav button.active{background:var(--purple);color:white}
@@ -152,7 +152,7 @@
 
   /* Klant-drill-down side panel (stap 6) */
   .cd-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(2px);z-index:90;opacity:0;pointer-events:none;transition:opacity .2s}
-  .cd-backdrop.show{opacity:1;pointer-events:auto}
+  .cd-backdrop.show{opacity:1}  /* Geen pointer-events:auto: clicks "buiten" worden via document-listener afgehandeld zodat ze óók de onderliggende element-actie kunnen triggeren (bv. nav-tab) */
   .cd-panel{position:fixed;top:0;right:0;width:420px;max-width:92vw;height:100vh;background:var(--bg2);border-left:1px solid var(--border2);z-index:100;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s cubic-bezier(.2,.7,.3,1);box-shadow:-12px 0 30px rgba(0,0,0,.4)}
   .cd-panel.open{transform:translateX(0)}
   .cd-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:22px 24px 14px;border-bottom:1px solid var(--border)}
@@ -902,6 +902,27 @@ function setupCompareBar(data) {
 }
 
 function toggleCompare(on) {
+  // Bij inschakelen: als Periode A vanaf maand 0 begint, blijft er geen ruimte
+  // over voor een Periode B vóór A. Verkort Periode A dan naar de tweede helft
+  // van de beschikbare data, zodat B (eerste helft) past en de gebruiker
+  // direct een werkende vergelijking ziet.
+  if (on && STATE.fromIdx === 0 && window.__DATA__) {
+    const n = window.__DATA__.months.length;
+    if (n >= 2) {
+      const half = Math.floor(n / 2);
+      STATE.fromIdx = half;
+      STATE.toIdx   = n - 1;
+      STATE.preset  = 'custom';
+      const presetSel = document.getElementById('periodPreset');
+      const fromSel   = document.getElementById('periodFrom');
+      const toSel     = document.getElementById('periodTo');
+      const customBox = document.getElementById('customRange');
+      if (presetSel) presetSel.value = 'custom';
+      if (fromSel)   fromSel.value   = STATE.fromIdx;
+      if (toSel)     toSel.value     = STATE.toIdx;
+      if (customBox) customBox.classList.add('show');
+    }
+  }
   STATE.compare.enabled = !!on;
   const bar = document.getElementById('compareBar');
   const btn = document.getElementById('compareToggle');
@@ -2194,7 +2215,17 @@ function closeClientPanel() {
 
 // Script staat onderaan body → elementen bestaan al; geen DOMContentLoaded nodig
 document.getElementById('cdClose').addEventListener('click', closeClientPanel);
-document.getElementById('cdBackdrop').addEventListener('click', closeClientPanel);
+// Click buiten het paneel sluit het — én laat de klik bij het onderliggende
+// element terechtkomen (bv. nav-tab) doordat de backdrop pointer-events:none heeft.
+// Gebruikt capture-phase zodat we voor de tab-click closeClientPanel triggeren,
+// maar verhinderen de echte navigatie-actie niet.
+document.addEventListener('click', e => {
+  const panel = document.getElementById('cdPanel');
+  if (!panel.classList.contains('open')) return;
+  if (panel.contains(e.target)) return;          // click ín het paneel — open laten
+  if (e.target.closest('#cBars')) return;        // openende klik op een klant-rij
+  closeClientPanel();
+}, true);
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeClientPanel();
 });
@@ -2203,6 +2234,8 @@ document.addEventListener('keydown', e => {
 //  TAB-NAVIGATIE
 // ============================================================================
 function show(id, btn) {
+  // Sluit drill-down (indien open) zodat de tab-wissel direct zichtbaar is
+  closeClientPanel();
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
   document.getElementById(id).classList.add('active');
